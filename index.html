@@ -1131,8 +1131,20 @@ body{font-family:'DM Sans',sans-serif;background:var(--paper);color:var(--ink);m
       <option value="Abgeschlossen">Clôturé</option>
     </select>
     <div class="modal-btns">
-      <button class="btn-cancel" onclick="closeModal('kundeModal')">Annuler</button>
+      <button class="btn-cancel" onclick="closeModal('kundeModal');if(state.currentView==='chantierHub')openKundePicker();">Annuler</button>
       <button class="btn-confirm" onclick="saveKundeModal()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Sélectionner / assigner un client -->
+<div class="modal-overlay" id="kundePickerModal">
+  <div class="modal" style="width:500px;max-height:82vh;overflow-y:auto;">
+    <h3 style="margin-bottom:1rem;">👤 Client du chantier</h3>
+    <div id="kundePickerContent"></div>
+    <div class="modal-btns" style="margin-top:1rem;">
+      <button class="btn-cancel" onclick="closeModal('kundePickerModal')">Fermer</button>
+      <button class="btn-confirm" onclick="closeModal('kundePickerModal');openKundeModal()">+ Nouveau client</button>
     </div>
   </div>
 </div>
@@ -8173,13 +8185,21 @@ function saveKundeModal(){
     };
     const btn=document.querySelector('#kundeModal .btn-confirm');
     if(btn){btn.textContent='Enregistrement...';btn.disabled=true;}
-    _kundenSave(data,id||undefined).then(()=>{
+    const newKey=id||String(Date.now());
+    _kundenSave(data,newKey).then(()=>{
       closeModal('kundeModal');
       if(btn){btn.textContent='Enregistrer';btn.disabled=false;}
       showToast('Client enregistré ✓');
-      // Stay on hub if we came from hub
-      if(state.currentView==='chantierHub') render();
-      else showKunden();
+      // If creating new client from chantier hub → auto-link to chantier
+      if(!id && state.currentView==='chantierHub'){
+        const ch=getChantier(state.currentChantierId);
+        if(ch){ ch.kundeId=newKey; autoSave(); }
+        renderChantierHub(state.currentChantierId);
+      } else if(state.currentView==='chantierHub'){
+        renderChantierHub(state.currentChantierId);
+      } else {
+        showKunden();
+      }
     }).catch(e=>{
       if(btn){btn.textContent='Enregistrer';btn.disabled=false;}
       alert('Erreur Firebase: '+e.message);
@@ -8694,16 +8714,59 @@ function pickerDeleteChantier(id){
 /* ═══════════════════════════════════════════════
    CHANTIER HUB — Module tiles per chantier
 ═══════════════════════════════════════════════ */
-// Helper: open client from hub (avoids stale window._hubKundeId)
+// Helper: open client picker from hub
 function _openHubClient(){
+  openKundePicker();
+}
+
+function openKundePicker(){
   var c=getChantier(state.currentChantierId);
   if(!c)return;
-  var kid=c.kundeId;
-  if(kid){
-    var k=(state.kunden||[]).find(function(x){return String(x.id)===String(kid);});
-    if(k){showKundenDetail(k.id);return;}
+  var kunden=state.kunden||[];
+  var currentId=c.kundeId;
+  var html='';
+  // Current client banner
+  if(currentId){
+    var cur=kunden.find(function(k){return String(k.id)===String(currentId);});
+    if(cur){
+      html+='<div style="background:#f0fdf4;border:1px solid #9ae6b4;border-radius:8px;padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">';
+      html+='<div style="font-size:12px;color:#276749;">&#10003; Actuel : <strong>'+_esc(cur.name)+'</strong>'+(cur.tel?' &middot; '+_esc(cur.tel):'')+'</div>';
+      html+='<div style="display:flex;gap:6px;">';
+      html+='<button onclick="closeModal(\'kundePickerModal\');showKundenDetail(\''+cur.id+'\')" style="background:#fff;border:1px solid #9ae6b4;color:#276749;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;">Voir d&eacute;tail</button>';
+      html+='<button onclick="_assignKundeToChantier(null)" style="background:#fff;border:1px solid #fed7d7;color:#e53e3e;padding:4px 10px;border-radius:6px;font-size:11px;cursor:pointer;font-family:inherit;">Retirer</button>';
+      html+='</div></div>';
+    }
   }
-  openKundeModal();
+  // Client list
+  if(kunden.length===0){
+    html+='<div style="text-align:center;padding:24px;color:#718096;font-size:13px;">Aucun client existant.<br>Utilisez &laquo;&nbsp;+&nbsp;Nouveau client&nbsp;&raquo; ci-dessous.</div>';
+  } else {
+    html+='<div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:#718096;margin-bottom:8px;">Choisir un client existant</div>';
+    html+='<div style="display:flex;flex-direction:column;gap:5px;">';
+    kunden.forEach(function(k){
+      var sel=String(k.id)===String(currentId);
+      var borderCol=sel?'var(--accent)':'var(--paper3)';
+      html+='<div onclick="_assignKundeToChantier(\''+k.id+'\')" style="padding:10px 14px;border:1.5px solid '+borderCol+';border-radius:8px;cursor:pointer;background:'+(sel?'var(--green-bg)':'#fff')+';display:flex;align-items:center;justify-content:space-between;transition:border .15s;">';
+      html+='<div><div style="font-size:13px;font-weight:600;color:var(--ink)">'+_esc(k.name||'')+'</div>';
+      html+='<div style="font-size:11px;color:var(--ink3)">'+_esc(k.typ||'Privat')+(k.tel?' &middot; '+_esc(k.tel):'')+(k.email?' &middot; '+_esc(k.email):'')+'</div></div>';
+      if(sel) html+='<span style="color:var(--accent);font-size:18px;font-weight:700;">&#10003;</span>';
+      html+='</div>';
+    });
+    html+='</div>';
+  }
+  document.getElementById('kundePickerContent').innerHTML=html;
+  openModal('kundePickerModal');
+}
+
+function _assignKundeToChantier(kundeId){
+  var c=getChantier(state.currentChantierId);
+  if(!c)return;
+  c.kundeId=kundeId||null;
+  autoSave();
+  var k=kundeId?(state.kunden||[]).find(function(x){return String(x.id)===String(kundeId);}):null;
+  showToast(k?'&#128101; Client assign&eacute; : '+k.name:'&#128101; Client retir&eacute;');
+  closeModal('kundePickerModal');
+  renderChantierHub(state.currentChantierId);
 }
 
 function renderChantierHub(id){
