@@ -4547,9 +4547,11 @@ function _getAllPins(){
 
 // ─── PROBLÈMES VIEW ─────────────────────────────────────────────────────────
 let _probFilter='open';
-function showProblemsView(){
+let _probChantierId=null; // null = tous les chantiers, sinon filtré sur un seul chantier
+function showProblemsView(chantierId){
   state.currentView='problems';
-  state.currentChantierId=null;state.currentPhaseId=null;
+  _probChantierId=(chantierId===undefined?null:chantierId);
+  state.currentChantierId=_probChantierId;state.currentPhaseId=null;
   document.getElementById('navDash').classList.remove('active');
   document.getElementById('navProblems').classList.add('active');
   renderProblemsView();
@@ -4558,7 +4560,8 @@ function renderProblemsViewIfActive(){
   if(state.currentView==='problems') renderProblemsView();
 }
 function renderProblemsView(){
-  const allPins=_getAllPins();
+  let allPins=_getAllPins();
+  if(_probChantierId!==null) allPins=allPins.filter(x=>x.cid===_probChantierId);
   const filtered=_probFilter==='open'?allPins.filter(x=>x.pin.category!=='solved')
     :_probFilter==='solved'?allPins.filter(x=>x.pin.category==='solved')
     :allPins;
@@ -4609,12 +4612,14 @@ function renderProblemsView(){
     ${f==='open'?'🔴 Ouverts':f==='solved'?'✅ Résolus':'Tous'}</button>`).join('');
 
   const openCount=allPins.filter(x=>x.pin.category!=='solved').length;
+  const _scopeChantier=_probChantierId!==null?getChantier(_probChantierId):null;
+  const scopeLabel=_scopeChantier?` sur ${escHtml(_scopeChantier.name||'')}`:' sur tous les chantiers';
   document.getElementById('mainContent').innerHTML=`<div class="problems-view">
     <div style="display:flex;align-items:center;gap:1rem;margin-bottom:.5rem">
-      <button class="kunden-detail-back" onclick="state.currentChantierId?showChantierHub(state.currentChantierId):showDashboard()">&#8592; ${state.currentChantierId?(()=>{const _c=getChantier(state.currentChantierId);return _c?_esc(_c.name):'Accueil';})():'Accueil'}</button>
+      <button class="kunden-detail-back" onclick="${_probChantierId!==null?`showChantierHub(${_probChantierId})`:'showDashboard()'}">&#8592; ${_scopeChantier?_esc(_scopeChantier.name):'Accueil'}</button>
     </div>
-    <div class="page-title">📍 Problèmes & Annotations</div>
-    <div class="page-sub">${openCount} problème${openCount!==1?'s':''} ouvert${openCount!==1?'s':''} sur tous les chantiers</div>
+    <div class="page-title">📍 Problèmes & Annotations${_scopeChantier?' — '+escHtml(_scopeChantier.name||''):''}</div>
+    <div class="page-sub">${openCount} problème${openCount!==1?'s':''} ouvert${openCount!==1?'s':''}${scopeLabel}</div>
     <div class="prob-filter-bar">${filterBar}</div>
     ${filtered.length===0?`<div class="prob-empty">🎉 Aucun élément dans cette catégorie.</div>`:groupsHtml}
   </div>`;
@@ -8858,7 +8863,7 @@ function renderChantierHub(id){
   html+=mkTile('planning','&#128197;','Planning',planCount,planCount===1?'planning':'plannings','#e8f8f0','showPlanning()',null);
   html+=mkTile('reunions','&#128221;','R&eacute;unions',null,'Comptes rendus','#f5e8f5','openReunionPanelSidebar()',null);
   html+=mkTile('photorapport','&#128247;','Photo / Rapport',null,'Rapport IA','#fff0f0','openPhotoRapport()',null);
-  html+=mkTile('problemes','&#128205;','Probl&egrave;mes',openPins,openPins===0?'Tout r&eacute;solu &#127881;':openPins+' ouvert'+(openPins>1?'s':''),'#fdecea','showProblemsView()',null);
+  html+=mkTile('problemes','&#128205;','Probl&egrave;mes',openPins,openPins===0?'Tout r&eacute;solu &#127881;':openPins+' ouvert'+(openPins>1?'s':''),'#fdecea','showProblemsView('+id+')',null);
   var aptPhase=(c.phases||[]).find(function(p){return p.type==='apt'&&(p.appartements||[]).length>0;});
   if(aptPhase) html+=mkTile('vuedensemble','&#128203;','Vue d\'ensemble',null,'Matrice des lots','#e8f4ff','state.currentView=\'overview\';state.currentChantierId='+id+';render()',null);
   var dcCount=(c.docCodes||[]).length;
